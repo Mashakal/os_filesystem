@@ -5,27 +5,36 @@
 int osErrno;
 
 int 
-FS_Boot(char *path)
+FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loaded
 {
     printf("FS_Boot %s\n", path);
 
     // oops, check for errors
-    if (Disk_Init() == -1) {
+    if (Disk_Init() == -1) {            
 	printf("Disk_Init() failed\n");
 	osErrno = E_GENERAL;
 	return -1;
     }
 
-    // do all of the other stuff needed...
+    // load the disk file
+    if (Disk_Load(path) == -1) {
+    printf("Disk_Load() failed\n");
+    osErrno = E_GENERAL;
+    return -1;
+    }
 
     return 0;
 }
 
 int
-FS_Sync()
+FS_Sync()       // Saves the current disk (from RAM) to a file (secondary storage)
 {
     printf("FS_Sync\n");
-    return 0;
+    // Save the file
+    if(Disk_Save(file) == -1) {         // TODO:  Find out where 'file' comes from (should it be passed in?)
+    printf("Disk_Save failed\n");
+    osErrno = E_GENERAL;                // TODO:  is this the correct error code?
+    }
 }
 
 

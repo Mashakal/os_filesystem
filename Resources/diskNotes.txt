@@ -1,0 +1,47 @@
+On-Disk Data Structures:
+
+Superblock:
+	holds the magic number for the file system
+
+Inode and Data blocks:
+	Each inode block:  several things about each file
+		size of the file
+		type of the file (normal or directory)
+		which file blocks are allocated to the file
+			(assume maximum file size is 30 blocks)
+		Therefore:
+			1 integer (size)
+			1 integer (type)
+			30 integers (pointing to locations of data blocks)
+	
+	Data blocks:
+		Assume each data block is the same size as a disk sector thus part of the disk must be dedicated to these blocks.
+
+		Use a bitmap to keep track of which inodes and datablocks have been allocated.
+			First block after the superblock should be the inode bitmap
+			Second block after the superblock should be the data bitmap.
+
+Open File Table:
+	Path Lookup
+
+	Read/Write to a file efficiently - the file information must be saved into the open file table.
+		When a process opens a file you should allocate it to the first entry on this table.
+
+	Returns the file descriptor (index within the open file table)
+
+	EFFICIENTLY READ AND WRITE IMPLICATIONS:
+		Read pointer
+		Write pointer
+
+	it is okay to limit the size of the open file table
+
+
+Disk Persistence:
+	You need to call Disk_Read and Disk_Write for every File_Read and File_Write and other file system operations that interact with the disk.
+
+
+Booting Up:
+	Check that the file size is equal to NUM_SECTORS * SECTOR_SIZE
+	Check for magic number in superblock
+	if the disk file does not exist, create a new disk
+		Initialize its superblock and other structures and create an empty roote directory in the file system. (ie, use Disk_Init() followed by a few Disk_Write() operations to initialize the disk, and then use Disk_Save() to save those changes to the disk.)
