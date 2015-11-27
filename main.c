@@ -1,5 +1,4 @@
 #include <stdio.h>
-
 #include "LibFS.h"
 
 void 
@@ -18,7 +17,7 @@ main(int argc, char *argv[])
     char *path = argv[1];
 
     FS_Boot(path);
-    FS_Sync();
+    FS_Sync(path);			// Added path as argument here
     return 0;
 }
 

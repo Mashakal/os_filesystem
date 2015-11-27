@@ -15,7 +15,8 @@
 
 // a few disk parameters
 #define SECTOR_SIZE  512
-#define NUM_SECTORS  10000 
+#define NUM_SECTORS  10000
+#define MAX_INODE_BLOCKS 30
 
 // disk errors
 typedef enum {
