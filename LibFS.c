@@ -16,7 +16,7 @@ typedef struct inode {
     int blocks[MAX_INODE_BLOCKS];
 } Inode;
 
-#define MAGIC_NUMBER 342
+static int MAGIC_NUMBER = 342;
 
 
 
@@ -34,8 +34,8 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
 	return -1;
     }
 
-    f_desc = open(path, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);  // open the file, will fail if it exists
-    if (fd < 0) 
+    int f_desc = open(path, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);  // open the file, will fail if it exists
+    if (f_desc < 0)
     {
         if (errno == EEXIST)        // if the file exists and open has failed
         {
@@ -63,7 +63,7 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
 }
 
 int
-FS_Sync(char* file)       // Saves the current disk (from RAM) to a file (secondary storage)
+FS_Sync(char *file)       // Saves the current disk (from RAM) to a file (secondary storage)
 {
     printf("FS_Sync\n");
     // Save the file
@@ -157,10 +157,10 @@ int
 File_Init(int fd)
 {
     // superblock only needs the magic number
-    if (write(fd, MAGIC_NUMBER, SECTOR_SIZE)) < 0)
+    if (write(fd, &MAGIC_NUMBER, sizeof(int)) < 0)
     {
         printf("File_Init() failed\n");
-        osErrno = E_CREATE;                   // TODO: is this the correct error code?
+        osErrno = E_CREATE;                     // TODO: is this the correct error code?
         return -1;
     }
 

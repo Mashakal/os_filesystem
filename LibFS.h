@@ -30,7 +30,7 @@ typedef enum {
     
 // File system generic call
 int FS_Boot(char *path);
-int FS_Sync();
+int FS_Sync(char *file);
 
 // file ops
 int File_Create(char *file);
