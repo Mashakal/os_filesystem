@@ -2,6 +2,8 @@
 #include "LibDisk.h"
 #include <fcntl.h>   // For checking if the file exists
 #include <errno.h>   // For checking if the file exists
+#include <unistd.h>
+#include <sys/types.h>
 
 // global errno value here
 int osErrno;
@@ -17,7 +19,7 @@ typedef struct inode {
 } Inode;
 
 static int MAGIC_NUMBER = 342;
-
+static off_t DISK_FILE_SIZE = 5120000;
 
 
 
@@ -45,22 +47,22 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
             osErrno = E_GENERAL;
             return -1;
             }
+        }
 
-        } else {                     // the file has now been created and needs initial setup (it is already open)
-            File_Init(f_desc);
-            close(f_desc);
-            if (Disk_Load(path) == -1) {
-            printf("Disk_Load() failed\n");
-            osErrno = E_GENERAL;
-            return -1;
-            }
+    } else {                     // the file has now been created and needs initial setup (it is already open)
+
+        File_Init(f_desc);
+        close(f_desc);
+        if (Disk_Load(path) == -1) {
+        printf("Disk_Load() failed\n");
+        osErrno = E_GENERAL;
+        return -1;
         }
     }
 
-
-
     return 0;
 }
+
 
 int
 FS_Sync(char *file)       // Saves the current disk (from RAM) to a file (secondary storage)
@@ -169,9 +171,9 @@ File_Init(int fd)
 
     int i;
     for (i = 0; i < 125; i++)                   // 1000 inodes / 8 bits per byte = 125 bytes in this bitmap
-    {                                           // TODO: do we need to account for 9 bit bytes?
-        const int AVAILABLE = 0;
-        fwrite(AVAILABLE, 1, 1, fd);
+    {                                           
+        const char AVAILABLE = 0;
+        fwrite(AVAILABLE, 1, 1, fd);            // fwrite(ptr to data, size in bytes, num elements of size size bytes, file descriptor)
     }
 
     // block 2, data block bitmap
@@ -179,10 +181,11 @@ File_Init(int fd)
 
     for (i = 0; i < 125; i++)
     {
-        const int AVAILABLE = 0;
+        const char AVAILABLE = 0;
         fwrite(AVAILABLE, 1, 1, fd);
     }
 
+    f
+
     return 0;
 }
-
