@@ -4,6 +4,8 @@
 #include <errno.h>   // For checking if the file exists
 #include <unistd.h>
 #include <sys/types.h>
+#include <string.h>
+
 
 // global errno value here
 int osErrno;
@@ -47,6 +49,10 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
             osErrno = E_GENERAL;
             return -1;
             }
+        } else {
+            printf("There was a problem with opening the file.\n");
+            osErrno = E_GENERAL;
+            return -1;
         }
 
     } else {                     // the file has now been created and needs initial setup (it is already open)
@@ -125,12 +131,12 @@ File_Unlink(char *file)
     return 0;
 }
 
-
 // directory ops
 int
 Dir_Create(char *path)
 {
     printf("Dir_Create %s\n", path);
+
     return 0;
 }
 
@@ -158,34 +164,36 @@ Dir_Unlink(char *path)
 int
 File_Init(int fd)
 {
+    int i;
+    const char AVAILABLE = 1;
+
+    if(ftruncate(fd, DISK_FILE_SIZE) < 0) {
+        printf("ftruncate() failed\n");
+        return -1;
+    }
+
     // superblock only needs the magic number
-    if (write(fd, &MAGIC_NUMBER, sizeof(int)) < 0)
-    {
+    if (write(fd, &MAGIC_NUMBER, sizeof(int)) < 0) {
         printf("File_Init() failed\n");
-        osErrno = E_CREATE;                     // TODO: is this the correct error code?
+        osErrno = E_CREATE;                     // TODO:  change this error code
         return -1;
     }
 
     // block 1, inode bitmap
     fseek(fd, SECTOR_SIZE, SEEK_SET);           // start at block #1
 
-    int i;
     for (i = 0; i < 125; i++)                   // 1000 inodes / 8 bits per byte = 125 bytes in this bitmap
     {                                           
-        const char AVAILABLE = 0;
         fwrite(AVAILABLE, 1, 1, fd);            // fwrite(ptr to data, size in bytes, num elements of size size bytes, file descriptor)
     }
 
-    // block 2, data block bitmap
+    // block 2-4, data block bitmap             // 512 bytes * 8 bites/byte = 4096 bits per sector, 9745 needed
     fseek(fd, SECTOR_SIZE * 2, SEEK_SET);       // start at block #2
 
-    for (i = 0; i < 125; i++)
+    for (i = 0; i < 1219; i++)                  // 9745 / 8 = 1218.125, round up = 1219
     {
-        const char AVAILABLE = 0;
         fwrite(AVAILABLE, 1, 1, fd);
     }
-
-    f
-
+    
     return 0;
 }
