@@ -30,7 +30,7 @@ typedef enum {
     
 // File system generic call
 int FS_Boot(char *path);
-int FS_Sync(char *file);           // I added this argument (previously empty)
+int FS_Sync();
 
 // file ops
 int File_Create(char *file);
@@ -40,7 +40,6 @@ int File_Write(int fd, void *buffer, int size);
 int File_Seek(int fd, int offset);
 int File_Close(int fd);
 int File_Unlink(char *file);
-int File_Init(int file_desc);       // added this
 
 // directory ops
 int Dir_Create(char *path);
