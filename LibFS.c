@@ -8,29 +8,26 @@
 // global errno value here
 int osErrno;
 
-
-/*
- *   These should probably be moved somewhere else
- */
 typedef struct inode {
     int size;
     int type;
     int blocks[MAX_INODE_BLOCKS];
 } Inode;
 
-static char MAGIC_NUMBER = 42;
-char *filepath;
-
-char buf[SECTOR_SIZE];
+/* CONSTANTS */
 static char DIR_TYPE = 0;
 static char FIL_TYPE = 1;
+static char MAGIC_NUMBER = 42;
 
-/*
- * IMPORTANT:  in the bitmap, 0 means NOT ALLOCATED and 1 means ALLOCATED
- */
+/* GLOBALS */
+char *filepath;
+char buf[SECTOR_SIZE];
 
+/* FUNCTIONS */
+int Find_Free_Inode_Block();
+Inode Create_Inode(int type);
 
-int 
+int
 FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loaded
 {
     filepath = path;
@@ -74,7 +71,7 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
 
     } else {  // the file has now been created and needs initial setup (it is already open)
         close(f_desc);                  // close the file, it does not need to be open
-        Disk_Read(0, buf);              // read in the superblock from RAM
+        Disk_Read(0, buf);              // read in the superblock from disk
         buf[0] = MAGIC_NUMBER;          // Assign the magic number to the first index of buffer
         Disk_Write(0, buf);             // Write the magic number to disk
         Disk_Read(1, buf);              // Read in the inode bitmap
@@ -82,17 +79,18 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
         Disk_Write(1, buf);             // write the inode bitmap back to the sector
 
         // CREATE THE ROOT DIRECTORY INODE
-//        Inode root;
-//        root.size = 0;  // is this the size of the information in the data blocks or the info in the inode
-//        root.type = DIR_TYPE;
-//        // DO I NEED TO DO ANYTHING WITH THE BLOCKS?
-//        Disk_Read(5, buf);
-//        memcpy(buf + 20, &root, sizeof(root)); // IS THIS RIGHT?
-//        Disk_Write(5, buf);
-
+        Inode root;
+        root.size = 0;  // is this the size of the information in the data blocks or the info in the inode
+        root.type = DIR_TYPE;
+        // DO I NEED TO DO ANYTHING WITH THE BLOCKS?
+        Disk_Read(5, buf);
+        memcpy(buf, &root, sizeof(root)); // IS THIS RIGHT?
+        Disk_Write(5, buf);
 
         Disk_Save(filepath);            // Save the init file
     }
+
+    printf("The first bitmap offset is: %d\n", Allocate_Inode());
 
     return 0;
 }
@@ -209,9 +207,7 @@ Empty_Buffer() {
 Inode
 Create_Inode(int type)
 {
-    // Read the inode bitmap from disk
 
-    // find the first available inode
 
     // change it to allocated
 
@@ -224,5 +220,27 @@ Create_Inode(int type)
     // Return the inode
 }
 
+int
+Find_Free_Inode_Block()
+{
+    // Read the inode bitmap from disk
+    Disk_Read(1, buf);
 
+    // find the first available inode
+    int i, j, offset = 0;
+    for (i = 0; i < SECTOR_SIZE; i++)
+    {
+        unsigned char current = buf[i];
 
+        unsigned char op = (char) 128;
+        printf("The value of current is: %d, and op is: %d\n", current, op);
+        for (j = 0; j < 8; j++)
+        {
+            if ((current & op) == 0) { return offset; }
+            op >>= 1;
+            offset++;
+        }
+    }
+
+    return -1;
+}
