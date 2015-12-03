@@ -17,7 +17,7 @@ main(int argc, char *argv[])
     char *path = argv[1];
 
     FS_Boot(path);
-    FS_Sync(path);			// Added path as argument here
+    FS_Sync();
     return 0;
 }
 

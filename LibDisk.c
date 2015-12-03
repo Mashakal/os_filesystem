@@ -74,13 +74,15 @@ int Disk_Load(char* file) {
     
     // error check
     if (file == NULL) {
-	diskErrno = E_INVALID_PARAM;
-	return -1;
+	    diskErrno = E_INVALID_PARAM;
+        printf("The file is null.\n");
+	    return -1;
     }
     
     // open the diskFile
     if ((diskFile = fopen(file, "r")) == NULL) {
 	diskErrno = E_OPENING_FILE;
+        printf("The value of diskfile is null.\n");
 	return -1;
     }
     
@@ -88,6 +90,7 @@ int Disk_Load(char* file) {
     if ((fread(disk, sizeof(Sector), NUM_SECTORS, diskFile)) != NUM_SECTORS) {
 	fclose(diskFile);
 	diskErrno = E_READING_FILE;
+        printf("The read was unsuccesful\n");
 	return -1;
     }
     

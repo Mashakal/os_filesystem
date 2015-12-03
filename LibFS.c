@@ -10,15 +10,15 @@ int osErrno;
 
 
 /*
-*   These should probably be moved somewhere else
-*/
+ *   These should probably be moved somewhere else
+ */
 typedef struct inode {
     int size;
     int type;
     int blocks[MAX_INODE_BLOCKS];
 } Inode;
 
-static char *MAGIC_NUMBER = (char *)42;
+static char MAGIC_NUMBER = 42;
 char *filepath;
 
 char buf[SECTOR_SIZE];
@@ -31,7 +31,6 @@ char buf[SECTOR_SIZE];
 int 
 FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loaded
 {
-    extern filepath;
     filepath = path;
     printf("FS_Boot %s\n", path);
 
@@ -42,7 +41,9 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
 	return -1;
     }
 
-    int f_desc = open(path, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);  // open the file, will fail if it exists
+    // Determine if the file exists
+    int f_desc = open(path, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);  // will fail, returning -1 if the file EXISTS, otherwise the file is created
+
     if (f_desc < 0)
     {
         if (errno == EEXIST)        // if the file exists and open has failed
@@ -53,8 +54,15 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
             osErrno = E_GENERAL;
             return -1;
             }
-            // Verify the magic number
-            // TODO: verify the magic number
+
+            // Validate the magic number is correct (to check if the file is corrupt)
+            Disk_Read(0, buf);
+            if (buf[0] != MAGIC_NUMBER) {
+                printf("File does not match disk type or it is corrupt.\n");
+            }
+
+            // Make sure the file is the correct size
+            // TODO:  Should we use FSTAT for this?
 
         } else {
             printf("There was a problem with opening the file.\n");
@@ -62,13 +70,15 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
             return -1;
         }
 
-    } else {                     // the file has now been created and needs initial setup (it is already open)
-        Disk_Write(0, MAGIC_NUMBER);    // write the magic number to the super block
-        Disk_Read(1, buf);              // read in the inode bitmap (currently all zeros)
-        buf[0] = (char)128;             // set the first bit in the inode bitmap to allocated (for the root directory)
+    } else {  // the file has now been created and needs initial setup (it is already open)
+        close(f_desc);                  // close the file, it does not need to be open
+        Disk_Read(0, buf);              // read in the superblock from RAM
+        buf[0] = MAGIC_NUMBER;          // Assign the magic number to the first index of buffer
+        Disk_Write(0, buf);             // Write the magic number to disk
+        Disk_Read(1, buf);              // Read in the inode bitmap
+        buf[0] = (char) 128;            // set the first bit in the inode bitmap to allocated (for the root directory).  128 = 10000000 in binary.
         Disk_Write(1, buf);             // write the inode bitmap back to the sector
         Disk_Save(filepath);            // Save the init file
-        printf("Finished with the file initialization\n");
     }
 
     return 0;
@@ -78,12 +88,11 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
 int
 FS_Sync()       // Saves the current disk (from RAM) to a file (secondary storage)
 {
-    extern filepath;
     printf("FS_Sync\n");
     // Save the file
     if(Disk_Save(filepath) == -1) {
     printf("Disk_Save() failed\n");
-    osErrno = E_GENERAL;                    // TODO:  is this the correct error code?
+    osErrno = E_GENERAL;
     }
 
     return 0;
@@ -93,6 +102,13 @@ FS_Sync()       // Saves the current disk (from RAM) to a file (secondary storag
 int
 File_Create(char *file)
 {
+    // check that the parent directories exist
+        // split the file into tokens, separated by '/'
+        // if the token cannot be found in the current directory (starting with root)
+            // if the file name is no more than 16 bytes, create it
+            // otherwise, return an error
+        // if it can be found, move on to the next token
+
     printf("FS_Create\n");
     return 0;
 }
@@ -169,6 +185,13 @@ Dir_Unlink(char *path)
     return 0;
 }
 
+int
+Empty_Buffer() {
+    int i;
+    for (i = 0; i < SECTOR_SIZE; i++) {
+        buf[i] = 0;
+    }
+}
 //int
 //File_Init(int fd)
 //{
