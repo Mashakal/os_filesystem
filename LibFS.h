@@ -47,6 +47,12 @@ int Dir_Size(char *path);
 int Dir_Read(char *path, void *buffer, int size);
 int Dir_Unlink(char *path);
 
+typedef enum {
+    INODE,
+    DATA,
+    NORM_FILE,
+    DIR_FILE,
+};
 
 #endif /* __LibFS_h__ */
 
