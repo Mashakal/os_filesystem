@@ -32,6 +32,7 @@ int Find_Free_Inode_Block();
 int Create_Inode(int type);
 int Find_Free_Data_Block();
 int Change_Bitmap_Value(int offset, int sec);
+void Debug_Testing();
 
 
 /*      BEGIN PROGRAM       */
@@ -100,6 +101,7 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
     }
 
     Create_Inode(NORM_FILE);
+    Debug_Testing();
     return 0;
 }
 
@@ -228,7 +230,7 @@ Create_Inode(int type)
     }
 
     // Create and initialize the inode
-    Inode node;
+    Inode node;                                     //  TODO: throw this into a New_Inode() function
     node.size = 0;
     node.type = type;
     for (i = 0; i < MAX_INODE_BLOCKS; i++) {
@@ -250,11 +252,10 @@ Create_Inode(int type)
         printf("DEBUG: The inode copied into the buffer successfully.\n");
     }
 
-    Inode *ptr_inode = (Inode *) (buf + start_pos);
-    printf("This is a test to see if the ptr_inode works as expected.\n");
-    printf("\tthe inode's type is: %d\n", ptr_inode->type);
-    printf("\tthe inode's size is: %d\n", ptr_inode->size);
-
+//    Inode *ptr_inode = (Inode *) (buf + start_pos);
+//    printf("This is a test to see if the ptr_inode works as expected.\n");
+//    printf("\tthe inode's type is: %d\n", ptr_inode->type);
+//    printf("\tthe inode's size is: %d\n", ptr_inode->size);
 
     // Write the buffer to disk
     Disk_Write(sec, buf);
@@ -277,9 +278,7 @@ Change_Bitmap_Value(int offset, int sec)
     add_val >>= (offset % 8);                   // This will shift the 1 in 10000000 to the appropriate position
 
     Disk_Read(sec, buf);
-    printf("Before the xor, byte_val is: %d\n", buf[byte_index]);
     *(buf + byte_index) ^= add_val;
-    printf("\tand now it is: %d\n", buf[byte_index]);
     Disk_Write(sec, buf);                       // Write the changes
 
     return 0;
@@ -318,23 +317,31 @@ Find_Free_Data_Block()
     int i, j, offset = 0;
     int sec = 2;
 
-    // Read the inode bitmap from disk
-    Disk_Read(sec, buf);
+    while (offset < NUM_DATA_BLOCKS) {
+        // Read the inode bitmap from disk
+        Disk_Read(sec, buf);
 
-    // find the first available inode
-    for (i = 0; i < NUM_DATA_BLOCKS; i++)
-    {
-        unsigned char current = (unsigned char) buf[i];
-        unsigned char op = (char) 128;
+        // find the first available inode
+        for (i = 0; i < NUM_DATA_BLOCKS; i++) {
+            unsigned char current = (unsigned char) buf[i];
+            unsigned char op = (char) 128;
 
-        for (j = 0; j < 8; j++) {
-            if ((current & op) == 0) { return offset; }
-            op >>= 1;
-            offset++;
+            for (j = 0; j < 8; j++) {
+                if ((current & op) == 0) { return offset; }
+                op >>= 1;
+                offset++;
+            }
         }
         sec += 1;
-        Disk_Read(sec, buf);    // TODO: read in the correct place, add a while loop
     }
 
     return -1;
+}
+
+void
+Debug_Testing()
+{
+    int offset = Find_Free_Data_Block();
+    Change_Bitmap_Value(offset, DATA_BITMAP_SEC);
+    printf("DEBUG: The value of data bitmap offset is %d\n", offset);
 }
