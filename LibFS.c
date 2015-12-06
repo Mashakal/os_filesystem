@@ -41,6 +41,7 @@ const size_t MAX_FILE_SIZE = 16;
 char buf[SECTOR_SIZE];
 
 /* FUNCTIONS */
+Dir_Data_Block New_Dir_Data_Block();
 int Find_Free_Inode_Block();
 int Find_Free_Data_Block();
 int Find_Pathname_Errors(char * file);
@@ -49,9 +50,12 @@ int Change_Bitmap_Value(int offset, int sec);
 int Get_Path_Token_Count(char *pathname);
 int Is_In_Directory(Inode *inode, char *token);
 int Insert_Log(Inode *parent, char *token);
+
+
 void Debug_Testing();
 void Pointer_Printing(char *token);
 void Array_Printing(char arr[]);
+
 
 /*      BEGIN PROGRAM       */
 int
@@ -135,106 +139,99 @@ File_Create(char *file)
     int i;
     int num_tokens = Get_Path_Token_Count(file);
     Inode *parent;
+    char dir_buffer[SECTOR_SIZE];
 
     if (Find_Pathname_Errors(file) == -1) {
         osErrno = E_CREATE;
         return -1;
     }
-    Disk_Read(INODE_SEC_START, buf);
-    parent = (Inode *) buf; // this is the root directory
+    Disk_Read(INODE_SEC_START, dir_buffer);
+    parent = (Inode *) dir_buffer; // this is the root directory
 
     path = malloc(strlen(file) + 1);
     strcpy(path, file);
 
     token = strtok(path, "/");
-//    Pointer_Printing(token);
 
     for (i = 0; i < num_tokens; i++) {
         if (i == num_tokens - 1) {      // If we are looking at the last token
             // find the first place for the file log
+            if (parent->size > 15000) {
+                osErrno = E_NO_SPACE;
+                printf("File_Create failed, not enough space in directory.");
+                return -1;
+            }
             Insert_Log(parent, token);
-
-//            if (parent->size == 0) {
-//                if ((inode_block = Create_Inode(NORM_FILE)) == -1) { //new inode# goes in current inode's datablock
-//                    osErrno = E_CREATE;
-//                    return -1;
-//                }
-//                data_block = Find_Free_Data_Block();    // Data block to store the name and inode for new file
-
-                // change the value of the next inode block from -1 to the data block number found above
-
-                // write the new file data into the data block
-
-                // change the size of the new file's parent
-
-                //
-//            }
         }
     }
+
+    Disk_Write(INODE_SEC_START, dir_buffer);
+
+    free(path);
     return 0;
-}
-
-void
-Pointer_Printing(char *token)
-{
-    size_t i;
-    char thestring[16];
-    strcpy(thestring, token);
-    printf("The word is: ");
-    for (i = 0; i < strlen(token); i++) {
-        printf("%c", thestring[i]);
-    }
-    printf("\n");
-}
-
-void
-Array_Printing(char arr[])
-{
-    size_t i;
-    printf("The word is: ");
-    for (i = 0; i < strlen(arr); i++) {
-        printf("%c", arr[i]);
-    }
-    printf("\n");
 }
 
 
 int
-Insert_Log(Inode* parent, char* token) {
-    int j, data_block, inode_num;
+Insert_Log(Inode *parent, char *token) {        // todo:  throw function calls into if statements for error checking
+    int j, i, data_block = NULL, inode_num;
+    char read_buffer[SECTOR_SIZE];
     Log log;
-    Dir_Data_Block dir_block;
 
-//    inode_num = Create_Inode(NORM_FILE);
-//    printf("This inode number is: %d\n", inode_num);
-    inode_num = 1042;
+    inode_num = Create_Inode(NORM_FILE);
+    printf("DEBUG: New file inode number is: %d\n", inode_num);
     log.inode_number = inode_num;
     strcpy(log.name, token);
-
 
     for(j = 0; j < MAX_INODE_BLOCKS; j++) {
         if (parent->blocks[j] == -1) {  // if there is no data block associated with this inode block pointer
             data_block = Find_Free_Data_Block();
-//            Change_Bitmap_Value(data_block, DATA_BITMAP_SEC);
+            Change_Bitmap_Value(data_block, DATA_BITMAP_SEC);
+            printf("DEBUG: This file's log is stored on data block: %d\n", data_block);
+            Dir_Data_Block dir_block = New_Dir_Data_Block();
             parent->blocks[j] = data_block;
+            parent->size += sizeof(Log);
             dir_block.logs[0] = log;
+            memcpy(read_buffer, &dir_block, sizeof(Dir_Data_Block));
+            Disk_Write(DATA_SEC_START + data_block, read_buffer);
+            return 0;
+        } else {
+            printf("DEBUG: Searching data block %d\n", parent->blocks[j]);
+            Disk_Read(DATA_SEC_START + parent->blocks[j], read_buffer);
+            Dir_Data_Block *dir_block = (Dir_Data_Block *) read_buffer;
+            for (i = 0; i < sizeof(dir_block->logs); i++) {
+                if (dir_block->logs[i].name[0] == NULL) {
+                    Array_Printing(dir_block->logs[i].name);
+                    printf("--VALUE IS: %d--\n", dir_block->logs[i].name[0]);
+                    dir_block->logs[i] = log;
+                    parent->size += sizeof(Log);
+                    printf("DEBUG: Writing to log index %d\n", i);
+                    memcpy(read_buffer, dir_block, sizeof(Dir_Data_Block));
+                    Disk_Write(DATA_SEC_START + parent->blocks[i], read_buffer);
+                    return 0;
+                }
+            }
         }
     }
 
-    Array_Printing(dir_block.logs[0].name);
+    return -1;
+}
 
-    printf("\n\tand the inode number is: %d\n", dir_block.logs[0].inode_number);
+Dir_Data_Block
+New_Dir_Data_Block()
+{
+    int i;
+    Dir_Data_Block block;
+    for (i = 0; i < SECTOR_SIZE / sizeof(Log); i++) {
+        block.logs[i].name[0] = '\0';
+    }
 
-    return 0;
+    return block;
 }
 
 
-
-
-
-
 int
-Is_In_Directory(Inode *inode, char *token)
+Is_In_Directory(Inode *inode, char *token)  // UNTESTED
 {
     int i, offset = 0;
     for (i = 0; i < MAX_INODE_BLOCKS; i++) {
@@ -379,7 +376,7 @@ Create_Inode(int type)
         printf("Create_Inode() failed, disk space full.\n");
         return -1;
     } else {
-        printf("DEBUG: The next bitmap location is: %d\n", (unsigned) offset);
+        printf("DEBUG: This inode's bitmap location is: %d\n", (unsigned) offset);
     }
 
     // Create and initialize the inode
@@ -401,8 +398,6 @@ Create_Inode(int type)
     if (memcpy(buf + start_pos, &node, sizeof(Inode)) == NULL) {
         printf("Error copying inode to buffer.  Create failed.\n");
         return -1;
-    } else {
-        printf("DEBUG: The inode copied into the buffer successfully.\n");
     }
 
     // Write the buffer to disk
@@ -498,6 +493,31 @@ Debug_Testing()
     Inode *root;
     Disk_Read(INODE_SEC_START, buf);
     root = (Inode *) buf;
-    printf("The root is of type: %d\n", root->type);
+    printf("DEBUG: The root is of type: %d\n", root->type);
+    printf("DEBUG: Root block[0] is %d\n", root->blocks[0]);
 }
 
+
+void
+Pointer_Printing(char *token)
+{
+    size_t i;
+    char thestring[16];
+    strcpy(thestring, token);
+    printf("DEBUG: The word is: ");
+    for (i = 0; i < strlen(token); i++) {
+        printf("%c", thestring[i]);
+    }
+    printf("\n");
+}
+
+void
+Array_Printing(char arr[])
+{
+    size_t i;
+    printf("Debug: The word is: ");
+    for (i = 0; i < strlen(arr); i++) {
+        printf("%c", arr[i]);
+    }
+    printf("\n");
+}
