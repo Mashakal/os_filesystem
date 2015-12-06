@@ -52,7 +52,7 @@ typedef enum {
     DATA,
     NORM_FILE,
     DIR_FILE,
-};
+} Types;
 
 #endif /* __LibFS_h__ */
 

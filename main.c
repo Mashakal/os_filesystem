@@ -17,6 +17,7 @@ main(int argc, char *argv[])
     char *path = argv[1];
 
     FS_Boot(path);
+    File_Create("helloworld");
     FS_Sync();
     return 0;
 }

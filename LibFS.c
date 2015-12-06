@@ -48,9 +48,10 @@ int Create_Inode(int type);
 int Change_Bitmap_Value(int offset, int sec);
 int Get_Path_Token_Count(char *pathname);
 int Is_In_Directory(Inode *inode, char *token);
-int Create_Log(Inode *parent, char *token);
+int Insert_Log(Inode *parent, char *token);
 void Debug_Testing();
-
+void Pointer_Printing(char *token);
+void Array_Printing(char arr[]);
 
 /*      BEGIN PROGRAM       */
 int
@@ -103,6 +104,7 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
         Disk_Read(0, buf);              // read in the superblock from disk
         buf[0] = MAGIC_NUMBER;          // Assign the magic number to the first index of buffer
         Disk_Write(0, buf);             // Write the magic number to disk
+        Create_Inode(DIR_FILE);         // Create the root directory inode
     }
 
 //    Create_Inode(NORM_FILE);
@@ -145,11 +147,12 @@ File_Create(char *file)
     strcpy(path, file);
 
     token = strtok(path, "/");
+//    Pointer_Printing(token);
 
     for (i = 0; i < num_tokens; i++) {
         if (i == num_tokens - 1) {      // If we are looking at the last token
             // find the first place for the file log
-            Create_Log(parent, token);
+            Insert_Log(parent, token);
 
 //            if (parent->size == 0) {
 //                if ((inode_block = Create_Inode(NORM_FILE)) == -1) { //new inode# goes in current inode's datablock
@@ -165,43 +168,64 @@ File_Create(char *file)
                 // change the size of the new file's parent
 
                 //
-            }
+//            }
         }
     }
     return 0;
 }
 
+void
+Pointer_Printing(char *token)
+{
+    size_t i;
+    char thestring[16];
+    strcpy(thestring, token);
+    printf("The word is: ");
+    for (i = 0; i < strlen(token); i++) {
+        printf("%c", thestring[i]);
+    }
+    printf("\n");
+}
+
+void
+Array_Printing(char arr[])
+{
+    size_t i;
+    printf("The word is: ");
+    for (i = 0; i < strlen(arr); i++) {
+        printf("%c", arr[i]);
+    }
+    printf("\n");
+}
+
+
 int
-Create_Log(Inode* parent, char* token) {
+Insert_Log(Inode* parent, char* token) {
     int j, data_block, inode_num;
     Log log;
     Dir_Data_Block dir_block;
 
-    inode_num = Create_Inode(NORM_FILE);
-    printf("This inode number is: %d\n", inode_num);
+//    inode_num = Create_Inode(NORM_FILE);
+//    printf("This inode number is: %d\n", inode_num);
+    inode_num = 1042;
     log.inode_number = inode_num;
     strcpy(log.name, token);
+
 
     for(j = 0; j < MAX_INODE_BLOCKS; j++) {
         if (parent->blocks[j] == -1) {  // if there is no data block associated with this inode block pointer
             data_block = Find_Free_Data_Block();
-            Change_Bitmap_Value(data_block, DATA_BITMAP_SEC);
+//            Change_Bitmap_Value(data_block, DATA_BITMAP_SEC);
             parent->blocks[j] = data_block;
             dir_block.logs[0] = log;
-
         }
     }
 
-    printf("DEBUG: The log name is: ");
-    int c;
-    char ch;
-    for (c = 0; c < 16; c++) {
-        ch = dir_block.logs[0].name[c];
-        if (ch == NULL) { break; }
-        printf("%c", ch);
-    }
+    Array_Printing(dir_block.logs[0].name);
 
     printf("\n\tand the inode number is: %d\n", dir_block.logs[0].inode_number);
+
+    return 0;
 }
 
 
@@ -381,12 +405,6 @@ Create_Inode(int type)
         printf("DEBUG: The inode copied into the buffer successfully.\n");
     }
 
-//    Inode *ptr_inode = (Inode *) (buf + start_pos);
-//    printf("DEBUG: This is a test to see if the ptr_inode works as expected.\n");
-//    printf("\tthe inode's type is: %d\n", ptr_inode->type);
-//    printf("\tthe inode's size is: %d\n", ptr_inode->size);
-//    printf("\tthe inode's block[29] value is: %d\n", ptr_inode->blocks[29]);
-
     // Write the buffer to disk
     Disk_Write(sec, buf);
 
@@ -421,7 +439,7 @@ Find_Free_Inode_Block()
     int i, j, offset = 0;
 
     // Read the inode bitmap from disk
-    Disk_Read(1, buf);
+    Disk_Read(INODE_BITMAP_SEC, buf);
 
     // find the first available inode
     for (i = 0; i < NUM_INODE_BLOCKS; i++)
@@ -475,5 +493,11 @@ Debug_Testing()
 //    int offset = Find_Free_Data_Block();
 //    Change_Bitmap_Value(offset, DATA_BITMAP_SEC);
 //    printf("DEBUG: The value of data bitmap offset is %d\n", offset);
+
+
+    Inode *root;
+    Disk_Read(INODE_SEC_START, buf);
+    root = (Inode *) buf;
+    printf("The root is of type: %d\n", root->type);
 }
 
