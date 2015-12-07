@@ -18,6 +18,7 @@ main(int argc, char *argv[])
 
     FS_Boot(path);
     File_Create("helloworld");
+    File_Create("helloworld/bitch");
     FS_Sync();
     return 0;
 }

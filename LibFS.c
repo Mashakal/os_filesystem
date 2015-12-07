@@ -32,8 +32,8 @@ const int NUM_DATA_BLOCKS = 9745;
 const int NUM_INODE_BLOCKS = 250;
 const int INODE_BITMAP_SEC = 1;
 const int DATA_BITMAP_SEC = 2;
-const int FILE_DATA_SIZE = 20;           // The size in bytes of a single file information stored in a Dir's data block
-const int LOG_SIZE = 20;                 // size in bytes of a file log entry for a directory data block
+const int FILE_DATA_SIZE = 20;              // The size in bytes of a single file information stored in a Dir's data block
+const int LOG_SIZE = 20;                    // size in bytes of a file log entry for a directory data block
 
 /* GLOBALS */
 char *filepath;
@@ -48,8 +48,10 @@ int Find_Pathname_Errors(char * file);
 int Create_Inode(int type);
 int Change_Bitmap_Value(int offset, int sec);
 int Get_Path_Token_Count(char *pathname);
-int Is_In_Directory(Inode *inode, char *token);
-int Insert_Log(Inode *parent, char *token);
+int Is_In_Directory(Inode *inode, char *token); // this is trash, delete it
+//int Insert_Log(Inode *parent, char *token);
+int Find_Inode(int inode_number, char *token);
+int Insert_Log(int parent_inode_num, char *token);
 
 
 void Debug_Testing();
@@ -113,6 +115,7 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
 
 //    Create_Inode(NORM_FILE);
 //    Debug_Testing();
+
     return 0;
 }
 
@@ -136,7 +139,7 @@ File_Create(char *file)
 {
     printf("FS_Create\n");
     char *token, *path;
-    int i;
+    int i, inode_to_search = 0;
     int num_tokens = Get_Path_Token_Count(file);
     Inode *parent;
     char dir_buffer[SECTOR_SIZE];
@@ -145,8 +148,6 @@ File_Create(char *file)
         osErrno = E_CREATE;
         return -1;
     }
-    Disk_Read(INODE_SEC_START, dir_buffer);
-    parent = (Inode *) dir_buffer; // this is the root directory
 
     path = malloc(strlen(file) + 1);
     strcpy(path, file);
@@ -156,34 +157,93 @@ File_Create(char *file)
     for (i = 0; i < num_tokens; i++) {
         if (i == num_tokens - 1) {      // If we are looking at the last token
             // find the first place for the file log
-            if (parent->size > 15000) {
-                osErrno = E_NO_SPACE;
-                printf("File_Create failed, not enough space in directory.");
-                return -1;
+//            int sec = INODE_SEC_START + (inode_to_search / 4);
+//            printf("INSIDE HERE, THE VALUE OF INODE_TO_SEARCH IS: %d\n", inode_to_search);
+//            int offset = inode_to_search % 4;
+//            Disk_Read(sec, dir_buffer);
+//            parent = (Inode *) (dir_buffer + (offset * sizeof(Inode)));
+
+//            if (parent->size > 15000) {
+//                osErrno = E_NO_SPACE;
+//                printf("File_Create failed, not enough space in directory.\n");
+//                return -1;
+//            }
+
+//            Insert_Log(parent, token);
+
+            Insert_Log(inode_to_search, token);
+
+        } else {
+            inode_to_search = Find_Inode(inode_to_search, token);
+            printf("\tThe inode to search value is: %d\n", inode_to_search);
+            if (inode_to_search != -1) {
+                token = strtok(NULL, "/");
+                printf("The new token is: %s\n", token);
+                Find_Inode(inode_to_search, token);
             }
-            Insert_Log(parent, token);
         }
     }
 
-    Disk_Write(INODE_SEC_START, dir_buffer);
+//    Disk_Write(INODE_SEC_START, dir_buffer);
+//    Debug_Testing();
 
     free(path);
     return 0;
 }
 
+int
+Find_Inode(int inode_number, char *token){
+    char inodeBuf[SECTOR_SIZE];   // our buffer for this function's inode block read
+    char dataBuf[SECTOR_SIZE];      // our buffer for this functions data block read
+    int sec = INODE_SEC_START + (inode_number / 4); // determine the block to read for this inode value
+    int offset = (inode_number % 4) * 128;  // determine the offset for this inode within the sector
+    Inode *inode;
+    Dir_Data_Block *data;
+    Disk_Read(sec, inodeBuf);     // read in the sector from disk
+    inode = (Inode *) (inodeBuf + offset);
+
+    int i;
+    for (i = 0; i < MAX_INODE_BLOCKS; i++) {
+        if (inode->blocks[i] != -1) {
+            Disk_Read(DATA_SEC_START + inode->blocks[i], dataBuf);
+            data = (Dir_Data_Block *) dataBuf;
+            int j;
+            for(j = 0; j < sizeof(Log); j++) {
+                if ((strncmp(token, data->logs[j].name, strlen(data->logs[j].name))) == 0) {
+                    printf("The strings are the same.\n");
+                    return data->logs[j].inode_number;
+                }
+            }
+        }
+    }
+
+    return -1;
+}
+
 
 int
-Insert_Log(Inode *parent, char *token) {        // todo:  throw function calls into if statements for error checking
+//Insert_Log(Inode *parent, char *token) {        // todo:  throw function calls into if statements for error checking
+Insert_Log(int parent_inode_num, char *token) {
+    Inode *parent;
+    char dir_buffer[SECTOR_SIZE];
+
     int j, i, data_block = NULL, inode_num;
     char read_buffer[SECTOR_SIZE];
     Log log;
 
     inode_num = Create_Inode(NORM_FILE);
-    printf("DEBUG: New file inode number is: %d\n", inode_num);
     log.inode_number = inode_num;
+    printf("DEBUG: New file inode number is: %d\n", log.inode_number);
     strcpy(log.name, token);
 
+    int sec = INODE_SEC_START + (parent_inode_num / 4);
+    int offset = parent_inode_num % 4;
+    Disk_Read(sec, dir_buffer);
+    parent = (Inode *) (dir_buffer + (offset * sizeof(Inode)));
+
+
     for(j = 0; j < MAX_INODE_BLOCKS; j++) {
+        printf("AT J=%d, the value of parent->blocks[j] is: %d\n", j, parent->blocks[j]);
         if (parent->blocks[j] == -1) {  // if there is no data block associated with this inode block pointer
             data_block = Find_Free_Data_Block();
             Change_Bitmap_Value(data_block, DATA_BITMAP_SEC);
@@ -192,22 +252,28 @@ Insert_Log(Inode *parent, char *token) {        // todo:  throw function calls i
             parent->blocks[j] = data_block;
             parent->size += sizeof(Log);
             dir_block.logs[0] = log;
-            memcpy(read_buffer, &dir_block, sizeof(Dir_Data_Block));
+            Disk_Read(DATA_SEC_START + data_block, read_buffer);
+            memcpy(read_buffer, &dir_block, sizeof(Log));
             Disk_Write(DATA_SEC_START + data_block, read_buffer);
-            return 0;
+            Disk_Write(sec, dir_buffer);
+//            Debug_Testing();
+            return data_block;
+
         } else {
             printf("DEBUG: Searching data block %d\n", parent->blocks[j]);
             Disk_Read(DATA_SEC_START + parent->blocks[j], read_buffer);
             Dir_Data_Block *dir_block = (Dir_Data_Block *) read_buffer;
+
             for (i = 0; i < sizeof(dir_block->logs); i++) {
-                if (dir_block->logs[i].name[0] == NULL) {
-                    Array_Printing(dir_block->logs[i].name);
-                    printf("--VALUE IS: %d--\n", dir_block->logs[i].name[0]);
+                printf("DEBUG: Inode at log# %d   is: %d\n", i, dir_block->logs[i].inode_number);
+                Array_Printing(dir_block->logs[i].name);
+
+                if (dir_block->logs[i].inode_number == -1) {
                     dir_block->logs[i] = log;
                     parent->size += sizeof(Log);
                     printf("DEBUG: Writing to log index %d\n", i);
                     memcpy(read_buffer, dir_block, sizeof(Dir_Data_Block));
-                    Disk_Write(DATA_SEC_START + parent->blocks[i], read_buffer);
+                    Disk_Write(DATA_SEC_START + parent->blocks[j], read_buffer);
                     return 0;
                 }
             }
@@ -223,7 +289,7 @@ New_Dir_Data_Block()
     int i;
     Dir_Data_Block block;
     for (i = 0; i < SECTOR_SIZE / sizeof(Log); i++) {
-        block.logs[i].name[0] = '\0';
+        block.logs[i].inode_number = -1;
     }
 
     return block;
@@ -489,12 +555,16 @@ Debug_Testing()
 //    Change_Bitmap_Value(offset, DATA_BITMAP_SEC);
 //    printf("DEBUG: The value of data bitmap offset is %d\n", offset);
 
+    char buffer[SECTOR_SIZE];
+    Disk_Read(DATA_SEC_START, buffer);
+    Dir_Data_Block *datablock = (Dir_Data_Block *) buffer;
+    printf("DEBUG TESTING:  NAME: %s\n", datablock->logs[0].name);
+    printf("DEBUG TESTING:  INODE: %d\n", datablock->logs[0].inode_number);
 
-    Inode *root;
-    Disk_Read(INODE_SEC_START, buf);
-    root = (Inode *) buf;
-    printf("DEBUG: The root is of type: %d\n", root->type);
-    printf("DEBUG: Root block[0] is %d\n", root->blocks[0]);
+//    Disk_Read(INODE_SEC_START, buffer);
+//    Inode *root = (Inode *) buffer;
+//    printf("DEBUG TESTING: Size is: %d\n", root->size);
+//    printf("DEBUG TESTING: Datablock is: %d\n", root->blocks[0]);
 }
 
 
