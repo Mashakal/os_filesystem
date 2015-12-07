@@ -48,11 +48,10 @@ int Find_Pathname_Errors(char * file);
 int Create_Inode(int type);
 int Change_Bitmap_Value(int offset, int sec);
 int Get_Path_Token_Count(char *pathname);
-int Is_In_Directory(Inode *inode, char *token); // this is trash, delete it
-//int Insert_Log(Inode *parent, char *token);
+int Is_In_Directory(int parent_inode_num, char *token);
 int Find_Inode(int inode_number, char *token);
-int Insert_Log(int parent_inode_num, char *token);
-
+int Insert_Log(int parent_inode_num, char *token, int file_type);
+int Unlink_File_Log(int inode_to_search, char *token);
 
 void Debug_Testing();
 void Pointer_Printing(char *token);
@@ -114,11 +113,10 @@ FS_Boot(char *path)     // Allocates memory in RAM for the disk file to be loade
     }
 
 //    Create_Inode(NORM_FILE);
-//    Debug_Testing();
+    Debug_Testing();
 
     return 0;
 }
-
 
 int
 FS_Sync()       // Saves the current disk (from RAM) to a file (secondary storage)
@@ -133,7 +131,6 @@ FS_Sync()       // Saves the current disk (from RAM) to a file (secondary storag
     return 0;
 }
 
-
 int
 File_Create(char *file)
 {
@@ -141,8 +138,6 @@ File_Create(char *file)
     char *token, *path;
     int i, inode_to_search = 0;
     int num_tokens = Get_Path_Token_Count(file);
-    Inode *parent;
-    char dir_buffer[SECTOR_SIZE];
 
     if (Find_Pathname_Errors(file) == -1) {
         osErrno = E_CREATE;
@@ -156,22 +151,14 @@ File_Create(char *file)
 
     for (i = 0; i < num_tokens; i++) {
         if (i == num_tokens - 1) {      // If we are looking at the last token
-            // find the first place for the file log
-//            int sec = INODE_SEC_START + (inode_to_search / 4);
-//            printf("INSIDE HERE, THE VALUE OF INODE_TO_SEARCH IS: %d\n", inode_to_search);
-//            int offset = inode_to_search % 4;
-//            Disk_Read(sec, dir_buffer);
-//            parent = (Inode *) (dir_buffer + (offset * sizeof(Inode)));
 
-//            if (parent->size > 15000) {
-//                osErrno = E_NO_SPACE;
-//                printf("File_Create failed, not enough space in directory.\n");
-//                return -1;
-//            }
+            if ((Is_In_Directory(inode_to_search, token)) == 0) {
+                osErrno = E_CREATE;
+                printf("File_Create failed.  Filename %s already exists.\n", token);
+                return -1;
+            }
 
-//            Insert_Log(parent, token);
-
-            Insert_Log(inode_to_search, token);
+            Insert_Log(inode_to_search, token, NORM_FILE);     // osErrno is set inside this function and -1 is returned
 
         } else {
             inode_to_search = Find_Inode(inode_to_search, token);
@@ -179,13 +166,9 @@ File_Create(char *file)
             if (inode_to_search != -1) {
                 token = strtok(NULL, "/");
                 printf("The new token is: %s\n", token);
-                Find_Inode(inode_to_search, token);
             }
         }
     }
-
-//    Disk_Write(INODE_SEC_START, dir_buffer);
-//    Debug_Testing();
 
     free(path);
     return 0;
@@ -209,8 +192,7 @@ Find_Inode(int inode_number, char *token){
             data = (Dir_Data_Block *) dataBuf;
             int j;
             for(j = 0; j < sizeof(Log); j++) {
-                if ((strncmp(token, data->logs[j].name, strlen(data->logs[j].name))) == 0) {
-                    printf("The strings are the same.\n");
+                if (strcmp(token, data->logs[j].name) == 0) {
                     return data->logs[j].inode_number;
                 }
             }
@@ -220,10 +202,9 @@ Find_Inode(int inode_number, char *token){
     return -1;
 }
 
-
 int
 //Insert_Log(Inode *parent, char *token) {        // todo:  throw function calls into if statements for error checking
-Insert_Log(int parent_inode_num, char *token) {
+Insert_Log(int parent_inode_num, char *token, int file_type) {
     Inode *parent;
     char dir_buffer[SECTOR_SIZE];
 
@@ -231,7 +212,7 @@ Insert_Log(int parent_inode_num, char *token) {
     char read_buffer[SECTOR_SIZE];
     Log log;
 
-    inode_num = Create_Inode(NORM_FILE);
+    inode_num = Create_Inode(file_type);
     log.inode_number = inode_num;
     printf("DEBUG: New file inode number is: %d\n", log.inode_number);
     strcpy(log.name, token);
@@ -241,9 +222,14 @@ Insert_Log(int parent_inode_num, char *token) {
     Disk_Read(sec, dir_buffer);
     parent = (Inode *) (dir_buffer + (offset * sizeof(Inode)));
 
+    if (parent->size > 14980) {
+        osErrno = E_NO_SPACE;
+        printf("File_Create failed, not enough space in directory.\n");
+        return -1;
+    }
+
 
     for(j = 0; j < MAX_INODE_BLOCKS; j++) {
-        printf("AT J=%d, the value of parent->blocks[j] is: %d\n", j, parent->blocks[j]);
         if (parent->blocks[j] == -1) {  // if there is no data block associated with this inode block pointer
             data_block = Find_Free_Data_Block();
             Change_Bitmap_Value(data_block, DATA_BITMAP_SEC);
@@ -253,7 +239,7 @@ Insert_Log(int parent_inode_num, char *token) {
             parent->size += sizeof(Log);
             dir_block.logs[0] = log;
             Disk_Read(DATA_SEC_START + data_block, read_buffer);
-            memcpy(read_buffer, &dir_block, sizeof(Log));
+            memcpy(read_buffer, &dir_block, sizeof(Dir_Data_Block));
             Disk_Write(DATA_SEC_START + data_block, read_buffer);
             Disk_Write(sec, dir_buffer);
 //            Debug_Testing();
@@ -264,9 +250,9 @@ Insert_Log(int parent_inode_num, char *token) {
             Disk_Read(DATA_SEC_START + parent->blocks[j], read_buffer);
             Dir_Data_Block *dir_block = (Dir_Data_Block *) read_buffer;
 
-            for (i = 0; i < sizeof(dir_block->logs); i++) {
+            for (i = 0; i < 25; i++) {
+                int foo = dir_block->logs[i].inode_number;
                 printf("DEBUG: Inode at log# %d   is: %d\n", i, dir_block->logs[i].inode_number);
-                Array_Printing(dir_block->logs[i].name);
 
                 if (dir_block->logs[i].inode_number == -1) {
                     dir_block->logs[i] = log;
@@ -274,6 +260,7 @@ Insert_Log(int parent_inode_num, char *token) {
                     printf("DEBUG: Writing to log index %d\n", i);
                     memcpy(read_buffer, dir_block, sizeof(Dir_Data_Block));
                     Disk_Write(DATA_SEC_START + parent->blocks[j], read_buffer);
+                    Disk_Write(sec, dir_buffer);
                     return 0;
                 }
             }
@@ -295,21 +282,33 @@ New_Dir_Data_Block()
     return block;
 }
 
-
 int
-Is_In_Directory(Inode *inode, char *token)  // UNTESTED
+Is_In_Directory(int parent_inode_number, char *token)
 {
-    int i, offset = 0;
-    for (i = 0; i < MAX_INODE_BLOCKS; i++) {
-        if(inode->blocks[i] < 0) { break; }
-        Disk_Read(inode->blocks[i], buf);
-        while (offset < inode->size)
-        {
-            // see if the name of the token matches the name of a file in this block of the directory's data
-            if ((strncmp(token, (buf + offset), strlen(buf + offset))) == 0) { return 1; } // File is in dir
-            offset += FILE_DATA_SIZE;
+    int i, sec;
+    size_t offset;
+    sec = INODE_SEC_START + (parent_inode_number / 4);
+    offset = ((parent_inode_number % 4) * sizeof(Inode));
+    Inode *parent;
+    char Is_In_Directory_Buffer[SECTOR_SIZE];
+    Disk_Read(sec, Is_In_Directory_Buffer);
+    parent = (Inode *) (Is_In_Directory_Buffer + offset);
+
+    for(i = 0; i < MAX_INODE_BLOCKS; i++) {
+        if (parent->blocks[i] != -1) {
+            int data_block = parent->blocks[i];
+            char Data_Block_Buffer[SECTOR_SIZE];
+            Disk_Read(DATA_SEC_START + data_block, Data_Block_Buffer);
+            Dir_Data_Block *dir_block = (Dir_Data_Block *) Data_Block_Buffer;
+            int j;
+            for (j = 0; j < 25; j++) {
+                if ((strcmp(token, dir_block->logs[j].name)) == 0) {
+                    return 0;
+                }
+            }
         }
     }
+
     return -1;  // the file does not exist in the directory
 }
 
@@ -323,14 +322,14 @@ Find_Pathname_Errors(char *file)
     strcpy(path, file);
 
     if ((token = strtok(path, "/")) == NULL) {
-        printf("File_Create failed.  File name cannot be null.\n");
+        printf("Create failed.  File/Dir name cannot be null.\n");
         return -1;
     }
 
     do {
         // Check if the token name is too big per guidelines
         if (strlen(token) > MAX_FILE_SIZE) {
-            printf("File_Create failed. Filename %s is too long.", token);
+            printf("Create failed. File/Dir name %s is too long.\n", token);
             return -1;
         }
 
@@ -356,7 +355,6 @@ Get_Path_Token_Count(char *file)
     free(pathname);
     return count;
 }
-
 
 int
 File_Open(char *file)
@@ -397,15 +395,133 @@ int
 File_Unlink(char *file)
 {
     printf("FS_Unlink\n");
+
+    // CHECK THE OPEN FILE TABLE FOR THIS FILE
+
+    char *token, *path;
+    int i, inode_to_search = 0;
+    int num_tokens = Get_Path_Token_Count(file);
+
+    if (Find_Pathname_Errors(file) == -1) {
+        osErrno = E_CREATE;
+        return -1;
+    }
+
+    path = malloc(strlen(file) + 1);
+    strcpy(path, file);
+
+    token = strtok(path, "/");
+
+    for (i = 0; i < num_tokens; i++) {
+        if (i == num_tokens - 1) {      // If we are looking at the last token
+            if (Is_In_Directory(inode_to_search, token) == -1) {
+                osErrno = E_NO_SUCH_FILE;
+                printf("File_Unlink failed, no such file: %s.\n", token);
+                return -1;
+            }
+
+            Unlink_File_Log(inode_to_search, token);
+
+        } else {
+            inode_to_search = Find_Inode(inode_to_search, token);
+            if (inode_to_search != -1) {
+                token = strtok(NULL, "/");
+                Find_Inode(inode_to_search, token);
+            } else {
+                // The file does not exist
+                osErrno = E_NO_SUCH_FILE;
+                printf("File_Unlink failed, no such directory: %s.\n", token);
+                return -1;
+            }
+        }
+    }
+
+    free(path);
+    return 0;
+}
+
+int
+Unlink_File_Log(int inode_to_search, char *token)
+{
+    int sec, i, offset, block = 0;
+    Dir_Data_Block *data_block;
+    Inode *parent;
+    char Unlink_Log_Buffer[SECTOR_SIZE];
+    char Unlink_Data_Buffer[SECTOR_SIZE];
+
+    sec = INODE_SEC_START + (inode_to_search / 4);
+    offset = (inode_to_search % 4) * 128;
+    Disk_Read(sec, Unlink_Log_Buffer);
+    parent = (Inode *) (Unlink_Log_Buffer + offset);
+
+    for (i = 0; i < MAX_INODE_BLOCKS; i++) {
+        if (parent->blocks[i] != -1) {
+
+            block = parent->blocks[i];
+            Disk_Read(DATA_SEC_START + block, Unlink_Data_Buffer);
+            data_block = (Dir_Data_Block *) Unlink_Data_Buffer;
+            int j;
+            for (j = 0; j < 25; j++) {
+                // Mark the Log as free in the data sector
+                if ((strcmp(token, data_block->logs[j].name)) == 0) {
+                    int k;
+                    for (k = 0; k < 16; k++) {
+                        data_block->logs[j].name[k] = '-';
+                    }
+                    int free_this_inode = data_block->logs[j].inode_number;
+                    data_block->logs[j].inode_number = -1;
+                    Change_Bitmap_Value(free_this_inode, INODE_BITMAP_SEC);    // Mark the file's inode as unallocated
+                    parent->size -= sizeof(Log);                               // Decrease the size of the parent directory
+                    Disk_Write(sec, Unlink_Log_Buffer);
+                    Disk_Write(DATA_SEC_START + block, Unlink_Data_Buffer);
+                    return 0;
+                }
+            }
+        }
+    }
+
     return 0;
 }
 
 // directory ops
 int
-Dir_Create(char *path)
+Dir_Create(char *file)
 {
-    printf("Dir_Create %s\n", path);
+    printf("Dir_Create %s\n", file);
+    char *token, *path;
+    int i, inode_to_search = 0;
+    int num_tokens = Get_Path_Token_Count(file);
 
+    if (Find_Pathname_Errors(file) == -1) {
+        osErrno = E_CREATE;
+        return -1;
+    }
+
+    path = malloc(strlen(file) + 1);
+    strcpy(path, file);
+
+    token = strtok(path, "/");
+
+    for (i = 0; i < num_tokens; i++) {
+        if (i == num_tokens - 1) {      // If we are looking at the last token
+
+            if ((Is_In_Directory(inode_to_search, token)) == 0) {
+                osErrno = E_CREATE;
+                printf("File_Create failed.  Filename %s already exists.\n", token);
+                return -1;
+            }
+
+            Insert_Log(inode_to_search, token, DIR_FILE);     // osErrno is set inside this function and -1 is returned
+
+        } else {
+            inode_to_search = Find_Inode(inode_to_search, token);
+            if (inode_to_search != -1) {
+                token = strtok(NULL, "/");
+            }
+        }
+    }
+
+    free(path);
     return 0;
 }
 
@@ -493,7 +609,6 @@ Change_Bitmap_Value(int offset, int sec)
     return 0;
 }
 
-
 int
 Find_Free_Inode_Block()
 {
@@ -555,16 +670,20 @@ Debug_Testing()
 //    Change_Bitmap_Value(offset, DATA_BITMAP_SEC);
 //    printf("DEBUG: The value of data bitmap offset is %d\n", offset);
 
-    char buffer[SECTOR_SIZE];
-    Disk_Read(DATA_SEC_START, buffer);
-    Dir_Data_Block *datablock = (Dir_Data_Block *) buffer;
-    printf("DEBUG TESTING:  NAME: %s\n", datablock->logs[0].name);
-    printf("DEBUG TESTING:  INODE: %d\n", datablock->logs[0].inode_number);
+//    char buffer[SECTOR_SIZE];
+//    Disk_Read(256, buffer);
+//    Dir_Data_Block *datablock = (Dir_Data_Block *) buffer;
+//    printf("DEBUG TESTING:  NAME: %s\n", datablock->logs[0].name);
+//    printf("DEBUG TESTING:  INODE: %d\n", datablock->logs[0].inode_number);
+//    printf("DEBUG TESTING:  NAME SIZE: %d\n", (int)strlen(datablock->logs[0].name));
 
 //    Disk_Read(INODE_SEC_START, buffer);
 //    Inode *root = (Inode *) buffer;
 //    printf("DEBUG TESTING: Size is: %d\n", root->size);
 //    printf("DEBUG TESTING: Datablock is: %d\n", root->blocks[0]);
+
+//    Disk_Read(256, buffer);
+
 }
 
 

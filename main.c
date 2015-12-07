@@ -17,8 +17,10 @@ main(int argc, char *argv[])
     char *path = argv[1];
 
     FS_Boot(path);
-    File_Create("helloworld");
-    File_Create("helloworld/bitch");
+    Dir_Create("helloworld");
+    Dir_Create("Monster");
+    File_Create("Monster/Madness.txt");
+    File_Unlink("helloworld");
     FS_Sync();
     return 0;
 }
